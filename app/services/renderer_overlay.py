@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 
 from ..config import get_settings
+from .image_processing import remove_white_background
 from .placement import PlacementResult
 from .validation import OverlayAssetNotFound
 
@@ -43,7 +44,8 @@ async def _download_bytes(url: str) -> bytes:
 
 async def _load_rgba(url: str) -> np.ndarray:
     data = await _download_bytes(url)
-    with Image.open(io.BytesIO(data)) as image:
+    cleaned_data = remove_white_background(data)
+    with Image.open(io.BytesIO(cleaned_data)) as image:
         return np.array(image.convert("RGBA"))
 
 
