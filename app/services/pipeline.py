@@ -102,6 +102,129 @@ def _combined_confidence(segmentation: SegmentationResult, placement_quality: st
     return round((segmentation.confidence * 0.7) + (_placement_quality_score(placement_quality) * 0.3), 3)
 
 
+def _format_vehicle_style(style: Optional[str]) -> Optional[str]:
+    if not style:
+        return None
+    labels = {
+        "suv": "SUV",
+        "sedan": "Sedan",
+        "coupe": "Coupe",
+        "hatchback": "Hatchback",
+        "wagon": "Wagon",
+        "truck": "Truck",
+        "convertible": "Convertible",
+    }
+    return labels.get(style.lower(), style.replace("_", " ").title())
+
+
+def _infer_vehicle_display_name(
+    product_title: Optional[str],
+    variant_title: Optional[str],
+    fallback_style: Optional[str],
+) -> Optional[str]:
+    context = " ".join(part for part in [product_title, variant_title] if part).strip()
+    if not context:
+        return _format_vehicle_style(fallback_style)
+
+    lowered = context.lower()
+    brand = None
+    brand_patterns = (
+        ("BMW", ("bmw",)),
+        ("Mercedes", ("mercedes", "benz", "amg")),
+        ("Audi", ("audi",)),
+        ("Volkswagen", ("volkswagen", "vw", "golf", "tiguan")),
+        ("Porsche", ("porsche",)),
+        ("Toyota", ("toyota",)),
+        ("Ford", ("ford", "mustang", "focus", "fiesta")),
+    )
+    for brand_name, tokens in brand_patterns:
+        if any(token in lowered for token in tokens):
+            brand = brand_name
+            break
+
+    model = None
+    model_patterns = (
+        ("BMW", (
+            ("8 Series", ("8 series",)),
+            ("7 Series", ("7 series",)),
+            ("6 Series", ("6 series",)),
+            ("5 Series", ("5 series", "g30", "f10", "g60")),
+            ("4 Series", ("4 series", "g22", "f32", "f33", "f36")),
+            ("3 Series", ("3 series", "g20", "g21", "f30", "f31", "e90", "e91", "e92", "e93")),
+            ("2 Series", ("2 series", "f22", "g42")),
+            ("1 Series", ("1 series", "f20", "f21")),
+            ("M5", ("m5",)),
+            ("M4", ("m4",)),
+            ("M3", ("m3",)),
+            ("X7", ("x7", "g07")),
+            ("X6", ("x6", "g06", "f16")),
+            ("X5", ("x5", "g05", "f15")),
+            ("X4", ("x4", "g02", "f26")),
+            ("X3", ("x3", "g01", "f25")),
+            ("X2", ("x2", "f39", "u10")),
+            ("X1", ("x1", "f48", "u11")),
+        )),
+        ("Mercedes", (
+            ("C-Class", ("c class", "c-class", "w205", "w206")),
+            ("E-Class", ("e class", "e-class", "w213", "w214")),
+            ("A-Class", ("a class", "a-class", "w177")),
+            ("CLA", ("cla",)),
+            ("GLC", ("glc", "x253", "x254")),
+            ("GLE", ("gle", "w167")),
+        )),
+        ("Audi", (
+            ("A5", ("a5",)),
+            ("A4", ("a4",)),
+            ("A3", ("a3",)),
+            ("Q7", ("q7",)),
+            ("Q5", ("q5",)),
+            ("Q3", ("q3",)),
+        )),
+        ("Volkswagen", (
+            ("Golf", ("golf",)),
+            ("Tiguan", ("tiguan",)),
+            ("Polo", ("polo",)),
+        )),
+        ("Porsche", (
+            ("911", ("911", "992", "991")),
+            ("Cayenne", ("cayenne",)),
+            ("Macan", ("macan",)),
+            ("Panamera", ("panamera",)),
+        )),
+        ("Ford", (
+            ("Mustang", ("mustang",)),
+            ("Focus", ("focus",)),
+            ("Fiesta", ("fiesta",)),
+            ("Ranger", ("ranger",)),
+        )),
+        ("Toyota", (
+            ("Supra", ("supra",)),
+            ("GR Yaris", ("gr yaris",)),
+            ("Corolla", ("corolla",)),
+            ("Hilux", ("hilux",)),
+        )),
+    )
+
+    for expected_brand, candidates in model_patterns:
+        if brand and expected_brand != brand:
+            continue
+        for candidate_name, tokens in candidates:
+            if any(token in lowered for token in tokens):
+                model = candidate_name
+                if not brand:
+                    brand = expected_brand
+                break
+        if model:
+            break
+
+    if brand and model:
+        return f"{brand} {model}"
+    if brand:
+        style = _format_vehicle_style(fallback_style)
+        return f"{brand} {style}".strip() if style else brand
+    return _format_vehicle_style(fallback_style)
+
+
 def _resolve_render_mode(request_overrides: dict[str, Optional[str]]) -> RenderMode:
     requested_mode = (request_overrides.get("render_mode") or get_settings().render_mode or "overlay").strip().lower()
     try:
@@ -143,14 +266,19 @@ def _create_detection_only_image(image_bytes: bytes, segmentation: SegmentationR
     return np.array(canvas)
 
 
-def _create_detection_only_result(job_id: str, image_bytes: bytes, segmentation: SegmentationResult) -> RenderResult:
+def _create_detection_only_result(
+    job_id: str,
+    image_bytes: bytes,
+    segmentation: SegmentationResult,
+    detected_vehicle_label: Optional[str] = None,
+) -> RenderResult:
     detection_image = _create_detection_only_image(image_bytes, segmentation)
     result_url = _image_array_to_data_url(detection_image, format="JPEG")
     return RenderResult(
         image_url=result_url,
         result_url=result_url,
         confidence=round(segmentation.confidence, 3),
-        detected_vehicle=segmentation.detected_vehicle_type,
+        detected_vehicle=detected_vehicle_label or segmentation.detected_vehicle_type,
         detected_angle=segmentation.detected_angle,
         placement_quality="low",
         render_mode="detection_only",
@@ -255,6 +383,18 @@ async def process_render_job(
             segmentation.detected_angle,
             segmentation.detected_vehicle_type,
         )
+        detected_vehicle_label = _infer_vehicle_display_name(
+            assets.product_title,
+            assets.variant_title,
+            segmentation.detected_vehicle_type,
+        )
+        logger.info(
+            "[%s] Vehicle display label resolved to %s from product_title=%s variant_title=%s",
+            job_id,
+            detected_vehicle_label,
+            assets.product_title,
+            assets.variant_title,
+        )
         if segmentation.confidence < 0.82:
             warnings.append(
                 RenderWarning(
@@ -278,7 +418,8 @@ async def process_render_job(
                 "segmentation_source": segmentation.source,
                 "segmentation_confidence": segmentation.confidence,
                 "detected_angle": segmentation.detected_angle,
-                "detected_vehicle": segmentation.detected_vehicle_type,
+                "detected_vehicle": detected_vehicle_label,
+                "detected_vehicle_style": segmentation.detected_vehicle_type,
             },
         )
 
@@ -321,7 +462,7 @@ async def process_render_job(
                     message="Product image was not available, so we're showing vehicle detection only.",
                 )
             )
-            result = _create_detection_only_result(job_id, image_bytes, segmentation)
+            result = _create_detection_only_result(job_id, image_bytes, segmentation, detected_vehicle_label)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             update_job(
                 job_id,
@@ -374,7 +515,7 @@ async def process_render_job(
                     message="We couldn't download the product image, so we're showing vehicle detection only.",
                 )
             )
-            result = _create_detection_only_result(job_id, image_bytes, segmentation)
+            result = _create_detection_only_result(job_id, image_bytes, segmentation, detected_vehicle_label)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             update_job(
                 job_id,
@@ -433,7 +574,7 @@ async def process_render_job(
             image_url=result_url,
             result_url=result_url,
             confidence=round((_combined_confidence(segmentation, placement.placement_quality) * 0.55) + (render_execution.confidence * 0.45), 3),
-            detected_vehicle=segmentation.detected_vehicle_type,
+            detected_vehicle=detected_vehicle_label or segmentation.detected_vehicle_type,
             detected_angle=segmentation.detected_angle,
             placement_quality=placement.placement_quality,  # type: ignore[arg-type]
             render_mode=render_execution.mode.value,
@@ -456,6 +597,8 @@ async def process_render_job(
                 "timings_ms": {"total": elapsed_ms},
                 "segmentation_source": segmentation.source,
                 "segmentation_confidence": segmentation.confidence,
+                "detected_vehicle": detected_vehicle_label,
+                "detected_vehicle_style": segmentation.detected_vehicle_type,
                 "placement_zone": assets.placement_zone,
                 "placement_quality": placement.placement_quality,
                 "product_type": assets.product_type,
