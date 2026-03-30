@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 import secrets
 
@@ -13,7 +14,7 @@ from .jobs import get_job, save_job, utc_now
 from .schemas import RenderJobResponse
 from .services.pipeline import process_render_job
 from .services.renderer import RenderMode, close_rendering_service, get_rendering_service
-from .services.segmentation import close_segmentation_service
+from .services.segmentation import close_segmentation_service, segment_vehicle
 from .services.validation import VirtualFitterError, get_user_guidance
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -121,6 +122,45 @@ def get_render_modes() -> dict[str, list[dict[str, object]]]:
                 "available": ai_available,
             },
         ]
+    }
+
+
+@app.post("/v1/debug/classify")
+async def debug_classify(request: Request) -> dict[str, object]:
+    """Run segmentation + angle classification without the full render pipeline."""
+    verify_token(request)
+    payload = await request.json()
+    image_b64 = str(payload.get("image_base64", "")).strip()
+    if not image_b64:
+        raise HTTPException(status_code=400, detail="image_base64 is required.")
+
+    try:
+        image_bytes = base64.b64decode(image_b64, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid image_base64 payload: {exc}") from exc
+
+    result = await segment_vehicle(image_bytes)
+    debug = result.debug
+    return {
+        "detected_angle": result.detected_angle,
+        "confidence": result.confidence,
+        "source": result.source,
+        "view_side": result.view_side,
+        "vehicle_bbox": result.vehicle_bbox,
+        "debug": {
+            "bbox_aspect_ratio": debug.bbox_aspect_ratio if debug else None,
+            "bbox_fill_ratio": debug.bbox_fill_ratio if debug else None,
+            "centroid_x_ratio": debug.centroid_x_ratio if debug else None,
+            "global_symmetry": debug.global_symmetry if debug else None,
+            "lower_red_ratio": debug.lower_red_ratio if debug else None,
+            "wheel_score_left": debug.wheel_score_left if debug else None,
+            "wheel_score_right": debug.wheel_score_right if debug else None,
+            "wheel_symmetry": debug.wheel_symmetry if debug else None,
+            "brightness_gradient": debug.brightness_gradient if debug else None,
+            "dark_center_ratio": debug.dark_center_ratio if debug else None,
+            "angle_confidence": debug.angle_confidence if debug else None,
+            "angle_decision_reason": debug.angle_decision_reason if debug else None,
+        },
     }
 
 
