@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import logging
 import time
@@ -69,6 +70,22 @@ def _save_jpg(path: Path, array: np.ndarray) -> None:
     Image.fromarray(array.astype(np.uint8)).save(path, format="JPEG", quality=92)
 
 
+def _bytes_to_data_url(payload: bytes, media_type: str) -> str:
+    encoded = base64.b64encode(payload).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def _image_array_to_data_url(array: np.ndarray, *, format: str = "JPEG", quality: int = 92) -> str:
+    image = Image.fromarray(array.astype(np.uint8))
+    buffer = io.BytesIO()
+    save_kwargs: dict[str, object] = {"format": format}
+    if format.upper() in {"JPEG", "WEBP"}:
+        save_kwargs["quality"] = quality
+    image.save(buffer, **save_kwargs)
+    media_type = "image/png" if format.upper() == "PNG" else "image/jpeg"
+    return _bytes_to_data_url(buffer.getvalue(), media_type)
+
+
 def _placement_quality_score(label: str) -> float:
     return {"high": 0.95, "medium": 0.8, "low": 0.62}.get(label, 0.75)
 
@@ -120,10 +137,8 @@ def _create_detection_only_image(image_bytes: bytes, segmentation: SegmentationR
 
 def _create_detection_only_result(job_id: str, image_bytes: bytes, segmentation: SegmentationResult) -> RenderResult:
     detection_image = _create_detection_only_image(image_bytes, segmentation)
-    result_path = _job_dir(job_id) / "detection-only.jpg"
-    _save_jpg(result_path, detection_image)
     return RenderResult(
-        image_url=_media_url(job_id, result_path.name),
+        image_url=_image_array_to_data_url(detection_image, format="JPEG"),
         confidence=round(segmentation.confidence, 3),
         detected_vehicle=segmentation.detected_vehicle_type,
         detected_angle=segmentation.detected_angle,
@@ -385,10 +400,9 @@ async def process_render_job(
             bool(render_execution.result_bytes),
         )
 
-        result_path = job_dir / "result.jpg"
+        segmentation_mask_url = _image_array_to_data_url((segmentation.vehicle_mask * 255).astype(np.uint8), format="PNG")
         if render_execution.result_bytes:
-            result_path.write_bytes(render_execution.result_bytes)
-            result_url = _media_url(job_id, result_path.name)
+            result_url = _bytes_to_data_url(render_execution.result_bytes, "image/jpeg")
         elif render_execution.result_url:
             result_url = render_execution.result_url
         else:
@@ -407,7 +421,7 @@ async def process_render_job(
             render_model=render_execution.model,
             processing_time_ms=render_execution.processing_time_ms,
             cost_usd=render_execution.cost_usd,
-            segmentation_mask_url=_media_url(job_id, mask_path.name),
+            segmentation_mask_url=segmentation_mask_url,
             vehicle_bbox=list(segmentation.vehicle_bbox),
         )
 

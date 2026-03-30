@@ -275,13 +275,43 @@ async def fetch_product_render_assets(
     overrides: Optional[dict[str, Optional[str]]] = None,
 ) -> ProductRenderAssets:
     overrides = overrides or {}
+    preferred_overlay_url = (
+        overrides.get("overlay_asset_url")
+        or overrides.get("product_image_url")
+        or overrides.get("featured_image_url")
+    )
     logger.info(
-        "Fetching product render assets: product_id=%s variant_id=%s shop_domain=%s override_overlay=%s",
+        "Fetching product render assets: product_id=%s variant_id=%s shop_domain=%s override_overlay=%s preferred_overlay=%s",
         product_id,
         variant_id,
         shop_domain,
         bool(overrides.get("overlay_asset_url")),
+        bool(preferred_overlay_url),
     )
+
+    # If the storefront already gave us a concrete product image URL, prefer that
+    # and avoid depending on Shopify Admin credentials for the common path.
+    if preferred_overlay_url:
+        inferred_product_type, inferred_zone = _infer_from_overrides(overrides)
+        logger.info(
+            "Using storefront-provided product image for product_id=%s variant_id=%s",
+            product_id,
+            variant_id,
+        )
+        return ProductRenderAssets(
+            product_id=product_id,
+            variant_id=variant_id,
+            product_title=overrides.get("product_title") or "Unknown product",
+            variant_title=overrides.get("variant_title"),
+            product_handle=overrides.get("product_handle") or "",
+            product_type=inferred_product_type,
+            placement_zone=inferred_zone,
+            overlay_url=preferred_overlay_url,
+            mask_url=overrides.get("mask_asset_url"),
+            anchors={"x_offset": 0.5, "y_offset": 0.5, "scale_factor": 1.0, "allow_mirror": True},
+            compatible_models=[],
+            render_prompt=overrides.get("placement_hint") or "",
+        )
 
     try:
         payload = await _fetch_admin_payload(shop_domain, product_id, variant_id)

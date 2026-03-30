@@ -7,6 +7,6 @@
   ],
   "placement_quality": "medium",
   "mirrored": true,
-  "compatibility_score": 0.65,
-  "compatibility_message": "Partial match: three_quarter view can support side_left placement."
+  "compatibility_score": 0.8,
+  "compatibility_message": "Good match"
 }
