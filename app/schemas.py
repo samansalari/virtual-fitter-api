@@ -24,6 +24,7 @@ class RenderError(BaseModel):
 
 class RenderResult(BaseModel):
     image_url: str
+    result_url: Optional[str] = None
     confidence: float
     detected_vehicle: Optional[str] = None
     detected_angle: Optional[str] = None

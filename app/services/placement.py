@@ -36,6 +36,7 @@ class PlacementResult:
 ZONE_PRESETS: dict[str, dict[str, tuple[float, float]]] = {
     "front": {"center": (0.5, 0.36), "size": (0.46, 0.18)},
     "rear": {"center": (0.5, 0.82), "size": (0.54, 0.20)},
+    "trunk": {"center": (0.68, 0.67), "size": (0.18, 0.08)},
     "side_left": {"center": (0.24, 0.62), "size": (0.30, 0.18)},
     "side_right": {"center": (0.76, 0.62), "size": (0.30, 0.18)},
     "hood": {"center": (0.5, 0.38), "size": (0.35, 0.22)},
@@ -49,6 +50,10 @@ BLEND_MODES: dict[str, str] = {
     "mirror_cap": "overlay",
     "wheel": "multiply",
 }
+
+
+def _normalize_zone(zone: str) -> str:
+    return "rear" if zone == "trunk" else zone
 
 
 ANGLE_COMPATIBILITY: dict[tuple[str, str], float] = {
@@ -148,7 +153,8 @@ def _perspective_quad(
 
 
 def check_angle_compatibility(detected_angle: str, product_zone: str) -> tuple[bool, float, str]:
-    score = ANGLE_COMPATIBILITY.get((detected_angle, product_zone), 0.0)
+    normalized_zone = _normalize_zone(product_zone)
+    score = ANGLE_COMPATIBILITY.get((detected_angle, normalized_zone), 0.0)
     if score >= 0.8:
         return True, score, "Good match"
     if score >= 0.5:
@@ -160,13 +166,14 @@ def check_angle_compatibility(detected_angle: str, product_zone: str) -> tuple[b
 
 def _validate_zone_angle(segmentation: SegmentationResult, config: PlacementConfig) -> tuple[bool, bool, float, str]:
     zone = config.placement_zone
+    normalized_zone = _normalize_zone(zone)
     angle = segmentation.detected_angle
     mirrored = False
     perspective = False
 
     compatible, compatibility_score, compatibility_message = check_angle_compatibility(angle, zone)
 
-    if zone == "rear":
+    if normalized_zone == "rear":
         if compatible:
             return mirrored, angle == "three_quarter", compatibility_score, compatibility_message
         raise IncompatiblePlacementAngle(

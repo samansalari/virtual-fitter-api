@@ -75,6 +75,14 @@ def _bytes_to_data_url(payload: bytes, media_type: str) -> str:
     return f"data:{media_type};base64,{encoded}"
 
 
+def _detect_media_type(payload: bytes) -> str:
+    if payload[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if payload[:4] == b"RIFF" and payload[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
+
+
 def _image_array_to_data_url(array: np.ndarray, *, format: str = "JPEG", quality: int = 92) -> str:
     image = Image.fromarray(array.astype(np.uint8))
     buffer = io.BytesIO()
@@ -137,8 +145,10 @@ def _create_detection_only_image(image_bytes: bytes, segmentation: SegmentationR
 
 def _create_detection_only_result(job_id: str, image_bytes: bytes, segmentation: SegmentationResult) -> RenderResult:
     detection_image = _create_detection_only_image(image_bytes, segmentation)
+    result_url = _image_array_to_data_url(detection_image, format="JPEG")
     return RenderResult(
-        image_url=_image_array_to_data_url(detection_image, format="JPEG"),
+        image_url=result_url,
+        result_url=result_url,
         confidence=round(segmentation.confidence, 3),
         detected_vehicle=segmentation.detected_vehicle_type,
         detected_angle=segmentation.detected_angle,
@@ -287,8 +297,9 @@ async def process_render_job(
             image_dimensions=(base_image.shape[1], base_image.shape[0]),
         )
         logger.info(
-            "[%s] Placement complete: quality=%s bbox=%s",
+            "[%s] Placement complete: zone=%s quality=%s bbox=%s",
             job_id,
+            assets.placement_zone,
             placement.placement_quality,
             placement.target_bbox,
         )
@@ -402,17 +413,25 @@ async def process_render_job(
 
         segmentation_mask_url = _image_array_to_data_url((segmentation.vehicle_mask * 255).astype(np.uint8), format="PNG")
         if render_execution.result_bytes:
-            result_url = _bytes_to_data_url(render_execution.result_bytes, "image/jpeg")
+            media_type = _detect_media_type(render_execution.result_bytes)
+            result_url = _bytes_to_data_url(render_execution.result_bytes, media_type)
         elif render_execution.result_url:
             result_url = render_execution.result_url
         else:
             raise RenderTimeout("The renderer completed without returning an image.")
+        logger.info(
+            "[%s] Result URL created: %s chars from bytes=%s",
+            job_id,
+            len(result_url),
+            len(render_execution.result_bytes or b""),
+        )
 
         for warning_message in render_execution.warnings:
             warnings.append(RenderWarning(code="VF_W04", message=warning_message))
 
         result = RenderResult(
             image_url=result_url,
+            result_url=result_url,
             confidence=round((_combined_confidence(segmentation, placement.placement_quality) * 0.55) + (render_execution.confidence * 0.45), 3),
             detected_vehicle=segmentation.detected_vehicle_type,
             detected_angle=segmentation.detected_angle,
@@ -445,6 +464,13 @@ async def process_render_job(
                 "render_cost_usd": render_execution.cost_usd,
                 "render_time_ms": render_execution.processing_time_ms,
             },
+        )
+        logger.info(
+            "[%s] Final result_url length=%s placement_zone=%s render_model=%s",
+            job_id,
+            len(result.result_url or result.image_url or ""),
+            assets.placement_zone,
+            render_execution.model,
         )
 
         return RenderJob(

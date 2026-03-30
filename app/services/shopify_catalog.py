@@ -129,10 +129,15 @@ def _infer_from_overrides(overrides: dict[str, Optional[str]]) -> tuple[str, str
     if "mirror" in placement_hint:
         return "mirror_cap", "side_left"
     if "badge" in placement_hint:
-        return "badge", "front"
+        return "badge", "trunk"
     if "body" in placement_hint:
         return "body_kit", "full_body"
     return "spoiler", "rear"
+
+
+def _is_badge_product(product_type: Optional[str]) -> bool:
+    normalized = (product_type or "").strip().lower()
+    return any(token in normalized for token in ("badge", "emblem", "logo", "xdrive"))
 
 
 async def _fetch_admin_payload(shop_domain: str, product_id: str, variant_id: str) -> dict:
@@ -293,6 +298,8 @@ async def fetch_product_render_assets(
     # and avoid depending on Shopify Admin credentials for the common path.
     if preferred_overlay_url:
         inferred_product_type, inferred_zone = _infer_from_overrides(overrides)
+        if _is_badge_product(inferred_product_type):
+            inferred_zone = "trunk"
         logger.info(
             "Using storefront-provided product image for product_id=%s variant_id=%s",
             product_id,
@@ -322,6 +329,8 @@ async def fetch_product_render_assets(
         if not overrides:
             raise
         inferred_product_type, inferred_zone = _infer_from_overrides(overrides)
+        if _is_badge_product(inferred_product_type):
+            inferred_zone = "trunk"
         overlay_url = overrides.get("overlay_asset_url") or overrides.get("product_image_url") or overrides.get("featured_image_url")
         return ProductRenderAssets(
             product_id=product_id,
@@ -354,6 +363,8 @@ async def fetch_product_render_assets(
     if not placement_zone:
         _, inferred_zone = _infer_from_overrides(overrides)
         placement_zone = inferred_zone
+    if _is_badge_product(product_type):
+        placement_zone = "trunk"
 
     if not product_type or not placement_zone:
         logger.error(
