@@ -1,0 +1,12 @@
+{
+  "target_bbox": [
+    272,
+    492,
+    547,
+    558
+  ],
+  "placement_quality": "medium",
+  "mirrored": true,
+  "compatibility_score": 0.65,
+  "compatibility_message": "Partial match: three_quarter view can support side_left placement."
+}

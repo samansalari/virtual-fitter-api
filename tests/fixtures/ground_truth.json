@@ -1,0 +1,89 @@
+{
+  "images": {
+    "bmw_f30_rear.jpg": {
+      "actual_angle": "rear",
+      "vehicle_type": "sedan",
+      "notes": "Direct rear view, taillights visible"
+    },
+    "bmw_f30_side.jpg": {
+      "actual_angle": "side",
+      "vehicle_type": "sedan",
+      "notes": "Side profile, both wheels visible"
+    },
+    "bmw_f30_threequarter.jpg": {
+      "actual_angle": "three_quarter",
+      "vehicle_type": "sedan",
+      "notes": "3/4 rear angle, partial side visible"
+    },
+    "mercedes_w177_rear.jpg": {
+      "actual_angle": "rear",
+      "vehicle_type": "hatchback",
+      "notes": "Direct rear view"
+    },
+    "generic_sedan_rear.jpg": {
+      "actual_angle": "rear",
+      "vehicle_type": "sedan",
+      "notes": "Generic rear view"
+    },
+    "problematic_angle.jpg": {
+      "actual_angle": "front",
+      "vehicle_type": "unknown",
+      "notes": "Front view - headlights visible, grille prominent, should not match rear products"
+    }
+  },
+  "products": {
+    "rear-spoiler": {
+      "placement_zone": "rear",
+      "compatible_angles": [
+        "rear",
+        "three_quarter"
+      ]
+    },
+    "rear-diffuser": {
+      "placement_zone": "rear",
+      "compatible_angles": [
+        "rear",
+        "three_quarter"
+      ]
+    },
+    "side-skirts": {
+      "placement_zone": "side_left",
+      "compatible_angles": [
+        "side",
+        "three_quarter"
+      ]
+    }
+  },
+  "expected_results": {
+    "bmw_f30_rear.jpg": {
+      "rear-spoiler": "success",
+      "rear-diffuser": "success",
+      "side-skirts": "VF_002"
+    },
+    "bmw_f30_side.jpg": {
+      "rear-spoiler": "VF_002",
+      "rear-diffuser": "VF_002",
+      "side-skirts": "success"
+    },
+    "bmw_f30_threequarter.jpg": {
+      "rear-spoiler": "success",
+      "rear-diffuser": "success",
+      "side-skirts": "success"
+    },
+    "mercedes_w177_rear.jpg": {
+      "rear-spoiler": "success",
+      "rear-diffuser": "success",
+      "side-skirts": "VF_002"
+    },
+    "generic_sedan_rear.jpg": {
+      "rear-spoiler": "success",
+      "rear-diffuser": "success",
+      "side-skirts": "VF_002"
+    },
+    "problematic_angle.jpg": {
+      "rear-spoiler": "VF_002",
+      "rear-diffuser": "VF_002",
+      "side-skirts": "VF_002"
+    }
+  }
+}

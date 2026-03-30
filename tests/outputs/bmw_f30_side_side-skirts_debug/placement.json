@@ -1,0 +1,12 @@
+{
+  "target_bbox": [
+    251,
+    527,
+    530,
+    614
+  ],
+  "placement_quality": "high",
+  "mirrored": true,
+  "compatibility_score": 1.0,
+  "compatibility_message": "Good match"
+}

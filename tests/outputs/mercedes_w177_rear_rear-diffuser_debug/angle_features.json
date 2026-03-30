@@ -1,0 +1,20 @@
+{
+  "bbox_aspect_ratio": 2.4098360655737703,
+  "bbox_fill_ratio": 0.7172226985056318,
+  "centroid_x_ratio": 0.5022231625971493,
+  "centroid_y_ratio": 0.5964065171926718,
+  "global_symmetry": 0.8330671787261963,
+  "upper_half_symmetry": 0.7914913892745972,
+  "lower_half_symmetry": 0.8682531118392944,
+  "upper_half_mass": 0.45837852985758953,
+  "lower_half_mass": 0.5416214701399946,
+  "left_half_mass": 0.48804516672870235,
+  "right_half_mass": 0.5119548332688818,
+  "wheel_score_left": 1.0,
+  "wheel_score_right": 1.0,
+  "wheel_symmetry": 1.0,
+  "horizontal_edge_ratio": 0.6506170500596242,
+  "vertical_edge_ratio": 0.34938294994033975,
+  "angle_confidence": 0.6560562844674053,
+  "angle_decision_reason": "rear(0.49): centered=0.50, global_sym=0.83, wide_aspect=2.41, filled=0.72, lower_heavy=0.54, wide_but_filled"
+}

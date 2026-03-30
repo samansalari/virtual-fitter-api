@@ -1,0 +1,217 @@
+{
+  "summary": {
+    "segmentation_mode": "opencv",
+    "angle_accuracy": "100.0%",
+    "placement_accuracy": "100.0%",
+    "true_positives": 10,
+    "true_negatives": 8,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "raw_success_rate": "55.6%",
+    "raw_success_count": 10,
+    "raw_failure_count": 8,
+    "total_tests": 18
+  },
+  "angle_confusion_matrix": {
+    "rear -> rear": 3,
+    "side -> side": 1,
+    "three_quarter -> three_quarter": 1,
+    "front -> front": 1
+  },
+  "angle_results": [
+    {
+      "image_name": "bmw_f30_rear.jpg",
+      "actual_angle": "rear",
+      "detected_angle": "rear",
+      "is_correct": true,
+      "confidence": 0.9000327499073384,
+      "debug_reason": "rear(1.00): centered=0.50, global_sym=0.87, compact_aspect=1.66"
+    },
+    {
+      "image_name": "bmw_f30_side.jpg",
+      "actual_angle": "side",
+      "detected_angle": "side",
+      "is_correct": true,
+      "confidence": 0.8505379039679373,
+      "debug_reason": "side(0.43): centered=0.47, mid_aspect=1.94, lean_fill=0.52, mass_imbalance=0.09, mid_profile"
+    },
+    {
+      "image_name": "bmw_f30_threequarter.jpg",
+      "actual_angle": "three_quarter",
+      "detected_angle": "three_quarter",
+      "is_correct": true,
+      "confidence": 0.9020858274141637,
+      "debug_reason": "three_quarter(0.55): centered=0.50, global_sym=0.93, wide_aspect=2.53, filled=0.69, sym_gap=0.06, balanced_three_quarter"
+    },
+    {
+      "image_name": "generic_sedan_rear.jpg",
+      "actual_angle": "rear",
+      "detected_angle": "rear",
+      "is_correct": true,
+      "confidence": 0.9361988898513858,
+      "debug_reason": "rear(0.69): centered=0.43, global_sym=1.00, compact_aspect=1.68, filled=0.80, front_edges=0.64"
+    },
+    {
+      "image_name": "mercedes_w177_rear.jpg",
+      "actual_angle": "rear",
+      "detected_angle": "rear",
+      "is_correct": true,
+      "confidence": 0.9106212129890076,
+      "debug_reason": "rear(0.49): centered=0.50, global_sym=0.83, wide_aspect=2.41, filled=0.72, lower_heavy=0.54, wide_but_filled"
+    },
+    {
+      "image_name": "problematic_angle.jpg",
+      "actual_angle": "front",
+      "detected_angle": "front",
+      "is_correct": true,
+      "confidence": 0.9369387164090277,
+      "debug_reason": "front(0.59): front_signature=1.00, centered=0.44, global_sym=0.99, compact_aspect=1.57, filled=0.80, front_edges=0.61"
+    }
+  ],
+  "placement_results": [
+    {
+      "image_name": "bmw_f30_rear.jpg",
+      "product_key": "rear-spoiler",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "bmw_f30_rear.jpg",
+      "product_key": "rear-diffuser",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "bmw_f30_rear.jpg",
+      "product_key": "side-skirts",
+      "expected_outcome": "VF_002",
+      "actual_outcome": "VF_002",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "bmw_f30_side.jpg",
+      "product_key": "rear-spoiler",
+      "expected_outcome": "VF_002",
+      "actual_outcome": "VF_002",
+      "is_correct": true,
+      "detected_angle": "side"
+    },
+    {
+      "image_name": "bmw_f30_side.jpg",
+      "product_key": "rear-diffuser",
+      "expected_outcome": "VF_002",
+      "actual_outcome": "VF_002",
+      "is_correct": true,
+      "detected_angle": "side"
+    },
+    {
+      "image_name": "bmw_f30_side.jpg",
+      "product_key": "side-skirts",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "side"
+    },
+    {
+      "image_name": "bmw_f30_threequarter.jpg",
+      "product_key": "rear-spoiler",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "three_quarter"
+    },
+    {
+      "image_name": "bmw_f30_threequarter.jpg",
+      "product_key": "rear-diffuser",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "three_quarter"
+    },
+    {
+      "image_name": "bmw_f30_threequarter.jpg",
+      "product_key": "side-skirts",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "three_quarter"
+    },
+    {
+      "image_name": "generic_sedan_rear.jpg",
+      "product_key": "rear-spoiler",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "generic_sedan_rear.jpg",
+      "product_key": "rear-diffuser",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "generic_sedan_rear.jpg",
+      "product_key": "side-skirts",
+      "expected_outcome": "VF_002",
+      "actual_outcome": "VF_002",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "mercedes_w177_rear.jpg",
+      "product_key": "rear-spoiler",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "mercedes_w177_rear.jpg",
+      "product_key": "rear-diffuser",
+      "expected_outcome": "success",
+      "actual_outcome": "success",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "mercedes_w177_rear.jpg",
+      "product_key": "side-skirts",
+      "expected_outcome": "VF_002",
+      "actual_outcome": "VF_002",
+      "is_correct": true,
+      "detected_angle": "rear"
+    },
+    {
+      "image_name": "problematic_angle.jpg",
+      "product_key": "rear-spoiler",
+      "expected_outcome": "VF_002",
+      "actual_outcome": "VF_002",
+      "is_correct": true,
+      "detected_angle": "front"
+    },
+    {
+      "image_name": "problematic_angle.jpg",
+      "product_key": "rear-diffuser",
+      "expected_outcome": "VF_002",
+      "actual_outcome": "VF_002",
+      "is_correct": true,
+      "detected_angle": "front"
+    },
+    {
+      "image_name": "problematic_angle.jpg",
+      "product_key": "side-skirts",
+      "expected_outcome": "VF_002",
+      "actual_outcome": "VF_002",
+      "is_correct": true,
+      "detected_angle": "front"
+    }
+  ]
+}
