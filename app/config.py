@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, validation_alias="DEBUG")
     storage_dir: Path = Field(default=Path("./storage"), validation_alias="VF_STORAGE_DIR")
     media_base_url: str = Field(default="http://localhost:8000/media", validation_alias="VF_MEDIA_BASE_URL")
-    render_mode: str = Field(default="overlay", validation_alias="VF_RENDER_MODE")
+    render_mode: str = Field(default="ai_basic", validation_alias="VF_RENDER_MODE")
     api_token: str = Field(default="", validation_alias="VF_API_TOKEN")
     cors_origins: list[str] = Field(
         default_factory=lambda: [
