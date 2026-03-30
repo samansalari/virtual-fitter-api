@@ -2,16 +2,31 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    host: str = Field(default="0.0.0.0", validation_alias="HOST")
+    port: int = Field(default=8000, validation_alias="PORT")
+    environment: str = Field(default="production", validation_alias="ENVIRONMENT")
+    debug: bool = Field(default=False, validation_alias="DEBUG")
     storage_dir: Path = Field(default=Path("./storage"), validation_alias="VF_STORAGE_DIR")
     media_base_url: str = Field(default="http://localhost:8000/media", validation_alias="VF_MEDIA_BASE_URL")
     render_mode: str = Field(default="overlay", validation_alias="VF_RENDER_MODE")
     api_token: str = Field(default="", validation_alias="VF_API_TOKEN")
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "https://kits.style",
+            "https://www.kits.style",
+            "https://kits-uk.myshopify.com",
+            "http://127.0.0.1:9292",
+            "http://localhost:9292",
+        ],
+        validation_alias="CORS_ORIGINS",
+    )
     shopify_admin_access_token: str = Field(default="", validation_alias="SHOPIFY_ADMIN_ACCESS_TOKEN")
     shopify_api_version: str = Field(default="2025-10", validation_alias="SHOPIFY_API_VERSION")
     shopify_default_shop_domain: str = Field(default="", validation_alias="SHOPIFY_SHOP_DOMAIN")
@@ -45,6 +60,29 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("["):
+                return value
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return value
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip().lower()
+            if stripped in {"1", "true", "yes", "on", "debug", "development"}:
+                return True
+            if stripped in {"0", "false", "no", "off", "release", "production"}:
+                return False
+        return value
 
 
 @lru_cache(maxsize=1)
