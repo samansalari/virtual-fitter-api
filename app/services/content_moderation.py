@@ -11,6 +11,79 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+FRIENDLY_MESSAGES = {
+    "no_vehicle": {
+        "title": "Hmm, that's not quite a car!",
+        "message": "We're looking for your lovely motor, not {detected}.",
+        "suggestions": [
+            "Pop outside and snap your car from the rear or side.",
+            "A car park or driveway photo works brilliantly.",
+            "Make sure the whole car is in frame, not just one wheel.",
+        ],
+        "detected_alternatives": {
+            "food": "your lunch",
+            "person": "a selfie",
+            "animal": "your furry friend",
+            "building": "some architecture",
+            "text": "a document",
+            "abstract": "something abstract",
+            "default": "something else entirely",
+        },
+    },
+    "people_detected": {
+        "title": "Oops! We spotted a human!",
+        "message": "For privacy, we need just the car in shot with no photobombers in frame.",
+        "suggestions": [
+            "Ask your mate to step aside for a moment.",
+            "Crop out any people before uploading if you can.",
+            "A clean driveway or car park snap works best.",
+        ],
+    },
+    "low_quality": {
+        "title": "Bit blurry there!",
+        "message": "We need a clearer photo to work our magic.",
+        "suggestions": [
+            "Try again in better lighting.",
+            "Hold steady and keep the whole car in view.",
+            "Use the original photo rather than a screenshot or thumbnail.",
+        ],
+    },
+    "invalid_image": {
+        "title": "That file didn't come through properly",
+        "message": "We couldn't read that image, so let's try another one.",
+        "suggestions": [
+            "Use a JPG or PNG photo.",
+            "Pick a different image from your gallery.",
+        ],
+    },
+    "nsfw": {
+        "title": "That image can't be used here",
+        "message": "We can only work with straightforward photos of your car.",
+        "suggestions": [
+            "Please upload a normal vehicle photo only.",
+            "Avoid unrelated or inappropriate images.",
+        ],
+    },
+}
+
+
+def get_friendly_error(error_type: str, context: Optional[dict[str, str]] = None) -> dict[str, object]:
+    context = context or {}
+    template = FRIENDLY_MESSAGES.get(error_type, FRIENDLY_MESSAGES["invalid_image"])
+    message = str(template["message"])
+    if "{detected}" in message:
+        detected_type = context.get("detected_type", "default")
+        alternatives = template.get("detected_alternatives", {})
+        detected_text = alternatives.get(detected_type, alternatives.get("default", "something"))
+        message = message.format(detected=detected_text)
+
+    return {
+        "title": template["title"],
+        "message": message,
+        "suggestions": list(template.get("suggestions", [])),
+    }
+
+
 class RejectionReason(Enum):
     NSFW = "nsfw_content"
     HUMAN_FACE = "human_face_detected"
@@ -25,7 +98,7 @@ class ModerationResult:
     rejection_reason: Optional[RejectionReason] = None
     rejection_message: Optional[str] = None
     confidence: float = 0.0
-    details: Optional[dict[str, float | int | str]] = None
+    details: Optional[dict[str, object]] = None
 
 
 class ContentModerator:
@@ -45,19 +118,22 @@ class ContentModerator:
     async def validate(self, image_bytes: bytes) -> ModerationResult:
         image = self._decode(image_bytes)
         if image is None:
+            friendly = get_friendly_error("invalid_image")
             return ModerationResult(
                 is_valid=False,
                 rejection_reason=RejectionReason.INVALID_FORMAT,
-                rejection_message="We couldn't read this image. Please upload a JPG or PNG photo.",
+                rejection_message=str(friendly["message"]),
+                details={"title": str(friendly["title"]), "suggestions": friendly["suggestions"]},
             )
 
         height, width = image.shape[:2]
         if width < 400 or height < 300:
+            friendly = get_friendly_error("low_quality")
             return ModerationResult(
                 is_valid=False,
                 rejection_reason=RejectionReason.LOW_QUALITY,
-                rejection_message="This photo is too small for an accurate preview. Please upload a larger image.",
-                details={"width": width, "height": height},
+                rejection_message=str(friendly["message"]),
+                details={"width": width, "height": height, "title": str(friendly["title"]), "suggestions": friendly["suggestions"]},
             )
 
         face_result = self._detect_faces(image)
@@ -102,11 +178,17 @@ class ContentModerator:
         face_ratio = face_area / max(image_area, 1.0)
 
         if total_faces >= 1 or face_ratio > 0.03:
+            friendly = get_friendly_error("people_detected")
             return ModerationResult(
                 is_valid=False,
                 rejection_reason=RejectionReason.HUMAN_FACE,
-                rejection_message="We detected a person in this photo. Please upload a photo of just your car without people visible.",
-                details={"faces_detected": total_faces, "face_ratio": round(face_ratio, 4)},
+                rejection_message=str(friendly["message"]),
+                details={
+                    "faces_detected": total_faces,
+                    "face_ratio": round(face_ratio, 4),
+                    "title": str(friendly["title"]),
+                    "suggestions": friendly["suggestions"],
+                },
             )
 
         return ModerationResult(is_valid=True)
@@ -126,11 +208,12 @@ class ContentModerator:
 
         aspect_ratio = image.shape[1] / max(image.shape[0], 1)
         if skin_ratio > 0.42 and aspect_ratio < 1.1:
+            friendly = get_friendly_error("nsfw")
             return ModerationResult(
                 is_valid=False,
                 rejection_reason=RejectionReason.NSFW,
-                rejection_message="This image can't be processed. Please upload a photo of your car only.",
-                details={"skin_ratio": round(skin_ratio, 4)},
+                rejection_message=str(friendly["message"]),
+                details={"skin_ratio": round(skin_ratio, 4), "title": str(friendly["title"]), "suggestions": friendly["suggestions"]},
             )
 
         return ModerationResult(is_valid=True)
@@ -138,13 +221,15 @@ class ContentModerator:
     def _detect_vehicle_presence(self, image: np.ndarray) -> ModerationResult:
         height, width = image.shape[:2]
         aspect_ratio = width / max(height, 1)
+        detected_type = self._infer_non_vehicle_type(image)
         if aspect_ratio < 0.8:
+            friendly = get_friendly_error("no_vehicle", {"detected_type": detected_type})
             return ModerationResult(
                 is_valid=False,
                 rejection_reason=RejectionReason.NO_VEHICLE,
-                rejection_message="This doesn't look like a car photo. Please upload a side, rear, or three-quarter view of your vehicle.",
+                rejection_message=str(friendly["message"]),
                 confidence=0.2,
-                details={"aspect_ratio": round(aspect_ratio, 3)},
+                details={"aspect_ratio": round(aspect_ratio, 3), "detected_type": detected_type, "title": str(friendly["title"]), "suggestions": friendly["suggestions"]},
             )
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -171,13 +256,20 @@ class ContentModerator:
         body_score = float(np.count_nonzero(non_background_mask) / max(non_background_mask.size, 1))
 
         confidence = (wheel_score * 0.65) + (min(body_score / 0.45, 1.0) * 0.35)
-        if confidence < 0.25:
+        if confidence < 0.3:
+            friendly = get_friendly_error("no_vehicle", {"detected_type": detected_type})
             return ModerationResult(
                 is_valid=False,
                 rejection_reason=RejectionReason.NO_VEHICLE,
-                rejection_message="We couldn't detect a vehicle in your photo. Please upload a clear photo of your car.",
+                rejection_message=str(friendly["message"]),
                 confidence=confidence,
-                details={"wheel_score": round(wheel_score, 3), "body_score": round(body_score, 3)},
+                details={
+                    "wheel_score": round(wheel_score, 3),
+                    "body_score": round(body_score, 3),
+                    "detected_type": detected_type,
+                    "title": str(friendly["title"]),
+                    "suggestions": friendly["suggestions"],
+                },
             )
 
         return ModerationResult(
@@ -185,6 +277,28 @@ class ContentModerator:
             confidence=confidence,
             details={"wheel_score": round(wheel_score, 3), "body_score": round(body_score, 3)},
         )
+
+    def _infer_non_vehicle_type(self, image: np.ndarray) -> str:
+        height, width = image.shape[:2]
+        aspect_ratio = width / max(height, 1)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 80, 160)
+        edge_ratio = float(np.count_nonzero(edges) / max(edges.size, 1))
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        mean_saturation = float(np.mean(hsv[:, :, 1]) / 255.0)
+        brightness_std = float(np.std(hsv[:, :, 2]) / 255.0)
+
+        if aspect_ratio < 0.82:
+            return "person"
+        if edge_ratio > 0.18 and mean_saturation < 0.18:
+            return "text"
+        if edge_ratio > 0.16 and brightness_std < 0.14:
+            return "building"
+        if mean_saturation > 0.45 and brightness_std > 0.2:
+            return "food"
+        if mean_saturation < 0.1 and edge_ratio < 0.04:
+            return "abstract"
+        return "default"
 
 
 content_moderator = ContentModerator()

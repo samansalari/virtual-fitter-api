@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import logging
 import secrets
+import time
+from collections import defaultdict
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,6 +45,10 @@ media_dir = settings.storage_dir / "media"
 media_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=media_dir), name="media")
 
+request_counts: defaultdict[str, list[float]] = defaultdict(list)
+RATE_LIMIT = 10
+RATE_WINDOW = 60
+
 
 def verify_token(request: Request) -> None:
     if not settings.api_token:
@@ -52,6 +58,17 @@ def verify_token(request: Request) -> None:
     expected = f"Bearer {settings.api_token}"
     if auth_header != expected:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def check_rate_limit(request: Request) -> None:
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    request_counts[client_ip] = [timestamp for timestamp in request_counts[client_ip] if now - timestamp < RATE_WINDOW]
+
+    if len(request_counts[client_ip]) >= RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Slow down there! Too many requests. Try again in a minute.")
+
+    request_counts[client_ip].append(now)
 
 
 def build_error_response(exc: VirtualFitterError) -> JSONResponse:
@@ -182,7 +199,12 @@ async def create_render_job(
     featured_image_url: str | None = Form(default=None),
     render_mode: str | None = Form(default="ai_premium"),
 ) -> RenderJobResponse:
+    check_rate_limit(request)
     verify_token(request)
+    referer = request.headers.get("referer", "")
+    allowed_origins = ("kits.style", "kits-uk.myshopify.com", "127.0.0.1", "localhost")
+    if referer and not any(origin in referer for origin in allowed_origins):
+        logger.warning("Virtual fitter request received from unexpected referer: %s", referer)
     logger.info(
         "Create render job request received: product_id=%s variant_id=%s handle=%s shop_domain=%s render_mode=%s",
         product_id,
