@@ -370,15 +370,38 @@ def classify_angle(features: AngleFeatures) -> tuple[str, float, str]:
         "three_quarter": 0.0,
     }
     reasons: list[str] = []
+    wheel_diff = abs(features.lower_left_circle_score - features.lower_right_circle_score)
+    wheel_max = max(features.lower_left_circle_score, features.lower_right_circle_score)
+    wheel_min = min(features.lower_left_circle_score, features.lower_right_circle_score)
     mass_imbalance = abs(features.left_half_mass - features.right_half_mass)
     symmetry_gap = abs(features.lower_half_symmetry - features.upper_half_symmetry)
 
     if features.lower_red_ratio > 0.035 and features.dark_center_ratio < 0.60:
         scores["rear"] += 0.22
         reasons.append(f"taillights={features.lower_red_ratio:.3f}")
+    elif (
+        features.lower_red_ratio > 0.003
+        and 1.85 <= features.bbox_aspect_ratio <= 2.35
+        and features.dark_center_ratio < 0.35
+    ):
+        scores["rear"] += 0.10
+        scores["three_quarter"] += 0.18
+        reasons.append(f"rear_cue={features.lower_red_ratio:.4f}")
     elif features.brightness_gradient < -0.05:
         scores["rear"] += 0.12
         reasons.append(f"lower_bright={features.brightness_gradient:.2f}")
+
+    if (
+        features.lower_red_ratio > 0.003
+        and features.global_symmetry < 0.62
+        and 1.90 <= features.bbox_aspect_ratio <= 2.30
+        and wheel_max > 0.8
+        and 0.3 < wheel_min < 0.8
+        and wheel_diff > 0.2
+    ):
+        scores["three_quarter"] += 0.34
+        scores["side"] -= 0.10
+        reasons.append(f"three_quarter_wheels={wheel_max:.1f}/{wheel_min:.1f}")
 
     if (
         features.dark_center_ratio > 0.92
