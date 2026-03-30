@@ -22,7 +22,7 @@ class ProductRenderAssets:
     product_handle: str
     product_type: str
     placement_zone: str
-    overlay_url: str
+    overlay_url: Optional[str]
     mask_url: Optional[str]
     anchors: dict
     compatible_models: list[str] = field(default_factory=list)
@@ -70,6 +70,26 @@ def _extract_metafield_value(field: Optional[dict]) -> Optional[str]:
         return None
     value = field.get("value")
     return value if isinstance(value, str) and value != "" else None
+
+
+def _extract_preview_url(node: Optional[dict]) -> Optional[str]:
+    if not isinstance(node, dict):
+        return None
+
+    if node.get("url"):
+        return node["url"]
+
+    image = node.get("image")
+    if isinstance(image, dict) and image.get("url"):
+        return image["url"]
+
+    preview = node.get("preview")
+    if isinstance(preview, dict):
+        preview_image = preview.get("image")
+        if isinstance(preview_image, dict) and preview_image.get("url"):
+            return preview_image["url"]
+
+    return None
 
 
 def _parse_anchors(raw_value: Optional[str]) -> dict:
@@ -132,6 +152,11 @@ async def _fetch_admin_payload(shop_domain: str, product_id: str, variant_id: st
         title
         handle
         productType
+        featuredMedia {
+          ... on MediaImage { image { url } }
+          ... on GenericFile { url }
+          preview { image { url } }
+        }
         product_type: metafield(namespace: "virtual_fitter", key: "product_type") { value }
         placement_zone: metafield(namespace: "virtual_fitter", key: "placement_zone") { value }
         overlay_asset: metafield(namespace: "virtual_fitter", key: "overlay_asset") {
@@ -155,6 +180,7 @@ async def _fetch_admin_payload(shop_domain: str, product_id: str, variant_id: st
       variant: productVariant(id: $variantId) {
         id
         title
+        image { url }
         product_type: metafield(namespace: "virtual_fitter", key: "product_type") { value }
         placement_zone: metafield(namespace: "virtual_fitter", key: "placement_zone") { value }
         overlay_asset: metafield(namespace: "virtual_fitter", key: "overlay_asset") {
@@ -202,6 +228,46 @@ def _merged_field(product: dict, variant: dict, key: str) -> Optional[str]:
     return _extract_metafield_value(variant.get(key)) or _extract_metafield_value(product.get(key))
 
 
+def _fallback_overlay_url(product: dict, variant: dict, overrides: dict[str, Optional[str]]) -> Optional[str]:
+    return (
+        overrides.get("overlay_asset_url")
+        or overrides.get("product_image_url")
+        or overrides.get("featured_image_url")
+        or _extract_preview_url(variant.get("image"))
+        or _extract_preview_url(product.get("featuredMedia"))
+    )
+
+
+async def get_product_image_url(
+    shop_domain: str,
+    product_id: str,
+    variant_id: Optional[str] = None,
+    overrides: Optional[dict[str, Optional[str]]] = None,
+) -> Optional[str]:
+    overrides = overrides or {}
+    if overrides.get("product_image_url") or overrides.get("featured_image_url"):
+        return overrides.get("product_image_url") or overrides.get("featured_image_url")
+    if not shop_domain:
+        return None
+
+    url = f"https://{shop_domain}/products.json"
+    timeout = get_settings().request_timeout_seconds
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(url, params={"limit": 250}, headers={"Accept": "application/json"})
+            response.raise_for_status()
+    except Exception:
+        return None
+
+    payload = response.json()
+    for product in payload.get("products", []):
+        if str(product.get("id")) == str(product_id):
+            images = product.get("images") or []
+            if images and images[0].get("src"):
+                return str(images[0]["src"])
+    return None
+
+
 async def fetch_product_render_assets(
     shop_domain: str,
     product_id: str,
@@ -226,9 +292,7 @@ async def fetch_product_render_assets(
         if not overrides:
             raise
         inferred_product_type, inferred_zone = _infer_from_overrides(overrides)
-        overlay_url = overrides.get("overlay_asset_url") or overrides.get("featured_image_url")
-        if not overlay_url:
-            raise MissingProductMetafields("No overlay asset URL was provided and Shopify assets could not be loaded.")
+        overlay_url = overrides.get("overlay_asset_url") or overrides.get("product_image_url") or overrides.get("featured_image_url")
         return ProductRenderAssets(
             product_id=product_id,
             variant_id=variant_id,
@@ -246,20 +310,29 @@ async def fetch_product_render_assets(
 
     product_type = _merged_field(product, variant, "product_type") or product.get("productType")
     placement_zone = _merged_field(product, variant, "placement_zone")
-    overlay_url = _merged_field(product, variant, "overlay_asset")
+    overlay_url = _merged_field(product, variant, "overlay_asset") or _fallback_overlay_url(product, variant, overrides)
+    if not overlay_url:
+        overlay_url = await get_product_image_url(shop_domain, product_id, variant_id, overrides=overrides)
     mask_url = _merged_field(product, variant, "mask_template")
     anchors = _parse_anchors(_merged_field(product, variant, "placement_anchors"))
     compatible_models = _parse_list(_merged_field(product, variant, "compatible_models"))
     render_prompt = _merged_field(product, variant, "render_prompt") or ""
 
-    if not product_type or not placement_zone or not overlay_url:
+    if not product_type:
+        inferred_product_type, _ = _infer_from_overrides(overrides)
+        product_type = inferred_product_type
+    if not placement_zone:
+        _, inferred_zone = _infer_from_overrides(overrides)
+        placement_zone = inferred_zone
+
+    if not product_type or not placement_zone:
         logger.error(
-            "Missing required virtual fitter metafields: product_type=%s placement_zone=%s overlay_url=%s",
+            "Missing required virtual fitter product config: product_type=%s placement_zone=%s overlay_url=%s",
             product_type,
             placement_zone,
             bool(overlay_url),
         )
-        raise MissingProductMetafields("Required Virtual Fitter metafields are missing for this product.")
+        raise MissingProductMetafields("Required Virtual Fitter product configuration is missing for this product.")
 
     return ProductRenderAssets(
         product_id=product_id,

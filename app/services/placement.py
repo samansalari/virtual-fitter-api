@@ -15,7 +15,7 @@ class PlacementConfig:
     product_type: str
     placement_zone: str
     anchors: dict
-    overlay_url: str
+    overlay_url: Optional[str]
     mask_url: Optional[str] = None
     compatible_models: list[str] = field(default_factory=list)
     render_prompt: Optional[str] = None

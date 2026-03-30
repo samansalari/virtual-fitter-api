@@ -178,6 +178,7 @@ async def create_render_job(
     placement_hint: str | None = Form(default=None),
     overlay_asset_url: str | None = Form(default=None),
     mask_asset_url: str | None = Form(default=None),
+    product_image_url: str | None = Form(default=None),
     featured_image_url: str | None = Form(default=None),
     render_mode: str | None = Form(default=None),
 ) -> RenderJobResponse:
@@ -220,6 +221,7 @@ async def create_render_job(
             "render_mode": render_mode or settings.render_mode,
             "overlay_asset_url_provided": bool(overlay_asset_url),
             "mask_asset_url_provided": bool(mask_asset_url),
+            "product_image_url_provided": bool(product_image_url),
             "featured_image_url_provided": bool(featured_image_url),
         },
     )
@@ -240,6 +242,7 @@ async def create_render_job(
             "placement_hint": placement_hint,
             "overlay_asset_url": overlay_asset_url,
             "mask_asset_url": mask_asset_url,
+            "product_image_url": product_image_url,
             "featured_image_url": featured_image_url,
             "render_mode": render_mode or settings.render_mode,
         },

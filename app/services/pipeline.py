@@ -9,16 +9,27 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from ..config import get_settings
 from ..jobs import get_job, update_job
 from ..schemas import RenderError, RenderResult, RenderWarning
+from .content_moderation import RejectionReason, validate_uploaded_image
 from .placement import PlacementConfig, calculate_placement
 from .renderer import RenderMode, get_rendering_service
 from .segmentation import SegmentationResult, segment_vehicle
 from .shopify_catalog import ProductRenderAssets, fetch_product_render_assets
-from .validation import IncompatiblePlacementAngle, RenderTimeout, VirtualFitterError, get_user_guidance
+from .validation import (
+    HumanFaceDetected,
+    ImageTooSmall,
+    IncompatiblePlacementAngle,
+    InvalidUploadFormat,
+    OverlayAssetNotFound,
+    RenderTimeout,
+    SensitiveContentDetected,
+    VirtualFitterError,
+    get_user_guidance,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +83,58 @@ def _resolve_render_mode(request_overrides: dict[str, Optional[str]]) -> RenderM
         return RenderMode(requested_mode)
     except ValueError:
         return RenderMode.OVERLAY
+
+
+def _raise_for_moderation_result(moderation_result) -> None:
+    if moderation_result.is_valid:
+        return
+
+    message = moderation_result.rejection_message or "The uploaded image could not be used."
+    if moderation_result.rejection_reason == RejectionReason.NSFW:
+        raise SensitiveContentDetected(message)
+    if moderation_result.rejection_reason == RejectionReason.HUMAN_FACE:
+        raise HumanFaceDetected(message)
+    if moderation_result.rejection_reason == RejectionReason.LOW_QUALITY:
+        raise ImageTooSmall(message)
+    if moderation_result.rejection_reason == RejectionReason.INVALID_FORMAT:
+        raise InvalidUploadFormat(message)
+    raise VirtualFitterError(code="VF_001", message=message, recoverable=True, http_status=422)
+
+
+def _create_detection_only_image(image_bytes: bytes, segmentation: SegmentationResult) -> np.ndarray:
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        canvas = image.convert("RGB")
+
+    draw = ImageDraw.Draw(canvas)
+    x1, y1, x2, y2 = segmentation.vehicle_bbox
+    accent = (24, 180, 104)
+    draw.rectangle((x1, y1, x2, y2), outline=accent, width=4)
+    label = f"Vehicle detected: {segmentation.detected_angle.replace('_', ' ')}"
+    label_x = x1
+    label_y = max(8, y1 - 28)
+    label_width = (len(label) * 8) + 12
+    draw.rectangle((label_x, label_y, label_x + label_width, label_y + 24), fill=accent)
+    draw.text((label_x + 6, label_y + 4), label, fill=(255, 255, 255))
+    return np.array(canvas)
+
+
+def _create_detection_only_result(job_id: str, image_bytes: bytes, segmentation: SegmentationResult) -> RenderResult:
+    detection_image = _create_detection_only_image(image_bytes, segmentation)
+    result_path = _job_dir(job_id) / "detection-only.jpg"
+    _save_jpg(result_path, detection_image)
+    return RenderResult(
+        image_url=_media_url(job_id, result_path.name),
+        confidence=round(segmentation.confidence, 3),
+        detected_vehicle=segmentation.detected_vehicle_type,
+        detected_angle=segmentation.detected_angle,
+        placement_quality="low",
+        render_mode="detection_only",
+        render_model="vehicle_detection",
+        processing_time_ms=0,
+        cost_usd=0.0,
+        segmentation_mask_url=None,
+        vehicle_bbox=list(segmentation.vehicle_bbox),
+    )
 
 
 def generate_placement_mask(vehicle_mask: np.ndarray, placement, placement_zone: str) -> np.ndarray:
@@ -144,6 +207,10 @@ async def process_render_job(
             shop_domain,
             selected_render_mode.value,
         )
+        update_job(job_id, status="segmenting", progress=8, message="Validating the uploaded image.")
+        moderation_result = await validate_uploaded_image(image_bytes)
+        _raise_for_moderation_result(moderation_result)
+
         update_job(job_id, status="segmenting", progress=12, message="Loading product assets and segmenting the vehicle.")
         assets = await fetch_product_render_assets(shop_domain, product_id, variant_id, overrides=request_overrides)
         logger.info(
@@ -221,22 +288,94 @@ async def process_render_job(
 
         update_job(job_id, status="rendering", progress=74, message="Rendering your product preview.", warnings=warnings)
 
+        if not assets.overlay_url:
+            warnings.append(
+                RenderWarning(
+                    code="VF_W01",
+                    message="Product image was not available, so we're showing vehicle detection only.",
+                )
+            )
+            result = _create_detection_only_result(job_id, image_bytes, segmentation)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            update_job(
+                job_id,
+                status="complete",
+                progress=100,
+                message="Vehicle detected.",
+                result=result,
+                warnings=warnings,
+                metadata={
+                    "timings_ms": {"total": elapsed_ms},
+                    "segmentation_source": segmentation.source,
+                    "segmentation_confidence": segmentation.confidence,
+                    "placement_zone": assets.placement_zone,
+                    "placement_quality": placement.placement_quality,
+                    "product_type": assets.product_type,
+                    "render_mode": "detection_only",
+                    "render_model": "vehicle_detection",
+                },
+            )
+            return RenderJob(
+                job_id=job_id,
+                status="complete",
+                progress=100,
+                result_url=result.image_url,
+                error=None,
+                metadata={"elapsed_ms": elapsed_ms, "mode": "detection_only"},
+            )
+
         placement_mask = generate_placement_mask(segmentation.vehicle_mask, placement, assets.placement_zone)
         placement_mask_path = job_dir / "placement-mask.png"
         _save_png(placement_mask_path, placement_mask.astype(np.uint8))
 
         rendering_service = get_rendering_service()
-        render_execution = await rendering_service.render(
-            car_image=base_image,
-            car_image_bytes=image_bytes,
-            product_image_url=assets.overlay_url,
-            mask=placement_mask,
-            placement=placement,
-            product_type=assets.product_type,
-            placement_zone=assets.placement_zone,
-            prompt_hint=assets.render_prompt,
-            mode=selected_render_mode,
-        )
+        try:
+            render_execution = await rendering_service.render(
+                car_image=base_image,
+                car_image_bytes=image_bytes,
+                product_image_url=assets.overlay_url,
+                mask=placement_mask,
+                placement=placement,
+                product_type=assets.product_type,
+                placement_zone=assets.placement_zone,
+                prompt_hint=assets.render_prompt,
+                mode=selected_render_mode,
+            )
+        except OverlayAssetNotFound:
+            warnings.append(
+                RenderWarning(
+                    code="VF_W05",
+                    message="We couldn't download the product image, so we're showing vehicle detection only.",
+                )
+            )
+            result = _create_detection_only_result(job_id, image_bytes, segmentation)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            update_job(
+                job_id,
+                status="complete",
+                progress=100,
+                message="Vehicle detected.",
+                result=result,
+                warnings=warnings,
+                metadata={
+                    "timings_ms": {"total": elapsed_ms},
+                    "segmentation_source": segmentation.source,
+                    "segmentation_confidence": segmentation.confidence,
+                    "placement_zone": assets.placement_zone,
+                    "placement_quality": placement.placement_quality,
+                    "product_type": assets.product_type,
+                    "render_mode": "detection_only",
+                    "render_model": "vehicle_detection",
+                },
+            )
+            return RenderJob(
+                job_id=job_id,
+                status="complete",
+                progress=100,
+                result_url=result.image_url,
+                error=None,
+                metadata={"elapsed_ms": elapsed_ms, "mode": "detection_only"},
+            )
         logger.info(
             "[%s] Render complete: mode=%s model=%s result_url=%s bytes=%s",
             job_id,

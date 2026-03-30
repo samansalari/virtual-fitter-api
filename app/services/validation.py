@@ -102,6 +102,46 @@ ERROR_GUIDANCE = {
         required_angles=["rear", "side", "three_quarter"],
         example_description="A clear, well-lit photo taken during the day.",
     ),
+    "VF_010": UserGuidance(
+        title="Inappropriate content",
+        message="This image can't be processed here.",
+        tips=["Please upload a photo of your car only."],
+        required_angles=["rear", "side", "three_quarter"],
+        example_description="A clear vehicle photo without people or unrelated content.",
+    ),
+    "VF_011": UserGuidance(
+        title="People detected",
+        message="We detected a person in your photo. For privacy, please upload a photo without people visible.",
+        tips=[
+            "Take a new photo with just your car in frame.",
+            "Crop out any visible people before uploading.",
+            "Use a parking-lot or driveway photo with no one standing near the car.",
+        ],
+        required_angles=["rear", "side", "three_quarter"],
+        example_description="A photo of only the vehicle, with no faces visible.",
+    ),
+    "VF_012": UserGuidance(
+        title="Image too small",
+        message="This photo is too small for us to create an accurate preview.",
+        tips=[
+            "Upload a larger image if possible.",
+            "Use the original photo instead of a screenshot or thumbnail.",
+            "Move closer to the car and retake the photo.",
+        ],
+        required_angles=["rear", "side", "three_quarter"],
+        example_description="A higher-resolution photo where the car fills a good part of the frame.",
+    ),
+    "VF_013": UserGuidance(
+        title="Invalid image",
+        message="We couldn't read this image file.",
+        tips=[
+            "Use a JPG or PNG photo.",
+            "Try a different image from your gallery.",
+            "Make sure the file isn't corrupted before uploading.",
+        ],
+        required_angles=["rear", "side", "three_quarter"],
+        example_description="A standard JPG or PNG photo taken with your phone or camera.",
+    ),
 }
 
 
@@ -202,6 +242,26 @@ class RenderTimeout(VirtualFitterError):
 class InvalidImage(VirtualFitterError):
     def __init__(self, message: str = "The uploaded file is not a valid image.") -> None:
         super().__init__(code="VF_007", message=message, recoverable=True, http_status=400)
+
+
+class SensitiveContentDetected(VirtualFitterError):
+    def __init__(self, message: str = "This image can't be processed.") -> None:
+        super().__init__(code="VF_010", message=message, recoverable=True, http_status=422)
+
+
+class HumanFaceDetected(VirtualFitterError):
+    def __init__(self, message: str = "We detected a person in the uploaded photo.") -> None:
+        super().__init__(code="VF_011", message=message, recoverable=True, http_status=422)
+
+
+class ImageTooSmall(VirtualFitterError):
+    def __init__(self, message: str = "The uploaded image is too small for reliable detection.") -> None:
+        super().__init__(code="VF_012", message=message, recoverable=True, http_status=422)
+
+
+class InvalidUploadFormat(VirtualFitterError):
+    def __init__(self, message: str = "We couldn't read the uploaded image.") -> None:
+        super().__init__(code="VF_013", message=message, recoverable=True, http_status=400)
 
 
 def warning(code: str, message: str) -> dict[str, str]:
