@@ -93,6 +93,27 @@ def _color_match(overlay_rgb: np.ndarray, base_rgb: np.ndarray, alpha: np.ndarra
     return matched
 
 
+def _create_shadow_mask(alpha_mask: np.ndarray, feather_radius: int) -> np.ndarray:
+    shadow = np.roll(alpha_mask.astype(np.float32), shift=max(2, feather_radius // 2), axis=0)
+    shadow = np.roll(shadow, shift=max(2, feather_radius // 3), axis=1)
+    kernel_size = max(5, ((feather_radius * 2) // 2) * 2 + 1)
+    shadow = cv2.GaussianBlur(shadow, (kernel_size, kernel_size), max(1.0, feather_radius))
+    return np.clip(shadow * 0.22, 0.0, 0.22)
+
+
+def _apply_shadow(base_region: np.ndarray, shadow_mask: np.ndarray) -> np.ndarray:
+    base = base_region.astype(np.float32) / 255.0
+    shaded = base * (1.0 - shadow_mask[..., None])
+    return np.clip(shaded * 255.0, 0, 255).astype(np.uint8)
+
+
+def _auto_alpha_from_background(overlay_rgb: np.ndarray) -> np.ndarray:
+    gray = cv2.cvtColor(overlay_rgb, cv2.COLOR_RGB2GRAY)
+    _, mask = cv2.threshold(gray, 245, 255, cv2.THRESH_BINARY_INV)
+    mask = cv2.GaussianBlur(mask.astype(np.float32) / 255.0, (5, 5), 0)
+    return np.clip(mask, 0.0, 1.0)
+
+
 async def render_overlay(
     base_image: np.ndarray,
     overlay_url: str,
@@ -112,7 +133,10 @@ async def render_overlay(
         overlay_rgba = np.ascontiguousarray(np.fliplr(overlay_rgba))
 
     overlay_rgb = overlay_rgba[..., :3]
-    overlay_alpha = overlay_rgba[..., 3].astype(np.float32) / 255.0
+    if overlay_rgba.shape[2] >= 4 and np.any(overlay_rgba[..., 3] > 0):
+        overlay_alpha = overlay_rgba[..., 3].astype(np.float32) / 255.0
+    else:
+        overlay_alpha = _auto_alpha_from_background(overlay_rgb)
 
     output_height, output_width = base_image.shape[:2]
     source_height, source_width = overlay_alpha.shape[:2]
@@ -150,6 +174,22 @@ async def render_overlay(
     mask_clip = cv2.GaussianBlur(vehicle_mask.astype(np.float32), (kernel_size, kernel_size), placement.feather_radius / 2)
     alpha_mask *= np.clip(mask_clip, 0.25, 1.0)
 
+    shadow_mask = _create_shadow_mask(alpha_mask, placement.feather_radius)
+    shaded_base = _apply_shadow(base_image, shadow_mask)
     color_matched_overlay = _color_match(warped_rgb, base_image, alpha_mask)
-    composed = _apply_blend_mode(base_image, color_matched_overlay, alpha_mask, placement.blend_mode)
+    composed = _apply_blend_mode(shaded_base, color_matched_overlay, alpha_mask, placement.blend_mode)
     return composed
+
+
+async def smart_overlay_composite(
+    base_image: np.ndarray,
+    overlay_url: str,
+    placement: PlacementResult,
+    vehicle_mask: np.ndarray,
+) -> np.ndarray:
+    return await render_overlay(
+        base_image=base_image,
+        overlay_url=overlay_url,
+        placement=placement,
+        vehicle_mask=vehicle_mask,
+    )
