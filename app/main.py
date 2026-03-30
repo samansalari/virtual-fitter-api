@@ -180,7 +180,7 @@ async def create_render_job(
     mask_asset_url: str | None = Form(default=None),
     product_image_url: str | None = Form(default=None),
     featured_image_url: str | None = Form(default=None),
-    render_mode: str | None = Form(default="ai_basic"),
+    render_mode: str | None = Form(default="ai_premium"),
 ) -> RenderJobResponse:
     verify_token(request)
     logger.info(

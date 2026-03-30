@@ -87,7 +87,7 @@ class ReplicateProvider:
     COSTS = {
         "sam2": 0.0015,
         "flux_ip_adapter": 0.015,
-        "flux_inpaint": 0.008,
+        "flux_inpaint": 0.015,
     }
 
     def __init__(
@@ -96,8 +96,8 @@ class ReplicateProvider:
         *,
         primary_model: str = "meta/sam-2-base",
         fallback_models: Optional[list[str]] = None,
-        flux_ip_adapter_model: str = "lucataco/flux-dev-ip-adapter",
-        flux_inpaint_model: str = "black-forest-labs/flux-fill-dev",
+        flux_ip_adapter_model: str = "black-forest-labs/flux-2-pro",
+        flux_inpaint_model: str = "black-forest-labs/flux-fill-pro",
         timeout_seconds: int = 120,
     ) -> None:
         self.api_token = api_token
@@ -147,29 +147,18 @@ class ReplicateProvider:
             detailed=False,
         )
         prediction_input = {
-            "image": self._bytes_to_data_uri(request.car_image_bytes),
-            "mask": self._bytes_to_data_uri(request.mask_bytes, "image/png"),
-            "ip_adapter_image": request.product_image_url,
-            "ip_adapter_scale": request.config.ip_adapter_scale,
-            "prompt": prompt,
-            "guidance_scale": request.config.guidance_scale,
-            "num_inference_steps": request.config.num_inference_steps,
-            "strength": request.config.strength,
+            "prompt": self._build_flux_2_prompt(prompt, request.placement_zone),
+            "input_images": [
+                self._bytes_to_data_uri(request.car_image_bytes),
+                request.product_image_url,
+            ],
+            "aspect_ratio": "match_input_image",
+            "safety_tolerance": 2,
+            "prompt_upsampling": False,
             "output_format": request.config.output_format,
             "output_quality": request.config.output_quality,
         }
-        try:
-            prediction = await self._create_prediction(self.flux_ip_adapter_model, prediction_input)
-        except RenderError:
-            prediction = await self._create_prediction(
-                self.flux_ip_adapter_model,
-                {
-                    "image": prediction_input["image"],
-                    "mask": prediction_input["mask"],
-                    "ip_adapter_image": prediction_input["ip_adapter_image"],
-                    "prompt": prediction_input["prompt"],
-                },
-            )
+        prediction = await self._create_prediction(self.flux_ip_adapter_model, prediction_input)
         result_url = self._extract_output_url(prediction.get("output"))
         if not result_url:
             raise RenderError("Replicate did not return an image URL for the premium render.")
@@ -182,7 +171,7 @@ class ReplicateProvider:
             cost_usd=self.COSTS["flux_ip_adapter"],
             debug={
                 "prompt": prompt,
-                "ip_adapter_scale": request.config.ip_adapter_scale,
+                "input_images": 2,
                 "product_url": request.product_image_url,
             },
         )
@@ -199,23 +188,13 @@ class ReplicateProvider:
             "image": self._bytes_to_data_uri(request.car_image_bytes),
             "mask": self._bytes_to_data_uri(request.mask_bytes, "image/png"),
             "prompt": prompt,
-            "guidance_scale": request.config.guidance_scale,
-            "num_inference_steps": max(18, request.config.num_inference_steps - 3),
-            "strength": request.config.strength,
-            "output_format": request.config.output_format,
-            "output_quality": request.config.output_quality,
+            "guidance": max(1.5, min(100.0, request.config.guidance_scale * 8)),
+            "steps": max(15, min(50, request.config.num_inference_steps)),
+            "output_format": "jpg" if request.config.output_format == "webp" else request.config.output_format,
+            "safety_tolerance": 2,
+            "prompt_upsampling": False,
         }
-        try:
-            prediction = await self._create_prediction(self.flux_inpaint_model, prediction_input)
-        except RenderError:
-            prediction = await self._create_prediction(
-                self.flux_inpaint_model,
-                {
-                    "image": prediction_input["image"],
-                    "mask": prediction_input["mask"],
-                    "prompt": prediction_input["prompt"],
-                },
-            )
+        prediction = await self._create_prediction(self.flux_inpaint_model, prediction_input)
         result_url = self._extract_output_url(prediction.get("output"))
         if not result_url:
             raise RenderError("Replicate did not return an image URL for the AI enhanced render.")
@@ -382,6 +361,16 @@ class ReplicateProvider:
         return (
             f"{base}, installed on the vehicle {placement_zone}, photorealistic automotive photo, "
             "natural lighting, realistic reflections, accurate perspective, factory-quality fitment"
+        )
+
+    @staticmethod
+    def _build_flux_2_prompt(base_prompt: str, placement_zone: str) -> str:
+        return (
+            f"Use image 1 as the base car photo and preserve its composition. "
+            f"Use image 2 as the product reference. "
+            f"Add the product from image 2 to the {placement_zone} area of the vehicle in image 1. "
+            f"Keep the result photorealistic with accurate perspective, lighting, shadows, and reflections. "
+            f"{base_prompt}"
         )
 
     @staticmethod

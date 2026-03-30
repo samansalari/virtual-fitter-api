@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, validation_alias="DEBUG")
     storage_dir: Path = Field(default=Path("./storage"), validation_alias="VF_STORAGE_DIR")
     media_base_url: str = Field(default="http://localhost:8000/media", validation_alias="VF_MEDIA_BASE_URL")
-    render_mode: str = Field(default="ai_basic", validation_alias="VF_RENDER_MODE")
+    render_mode: str = Field(default="ai_premium", validation_alias="VF_RENDER_MODE")
     api_token: str = Field(default="", validation_alias="VF_API_TOKEN")
     cors_origins: list[str] = Field(
         default_factory=lambda: [
@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     segmentation_sam2_fallback_model: str = Field(default="meta/sam-2-large", validation_alias="SEGMENTATION_SAM2_FALLBACK_MODEL")
     enable_ai_rendering: bool = Field(default=True, validation_alias="ENABLE_AI_RENDERING")
     render_ai_timeout: int = Field(default=180, validation_alias="RENDER_AI_TIMEOUT")
-    flux_ip_adapter_model: str = Field(default="lucataco/flux-dev-ip-adapter", validation_alias="FLUX_IP_ADAPTER_MODEL")
-    flux_inpaint_model: str = Field(default="black-forest-labs/flux-fill-dev", validation_alias="FLUX_INPAINT_MODEL")
+    flux_ip_adapter_model: str = Field(default="black-forest-labs/flux-2-pro", validation_alias="FLUX_IP_ADAPTER_MODEL")
+    flux_inpaint_model: str = Field(default="black-forest-labs/flux-fill-pro", validation_alias="FLUX_INPAINT_MODEL")
     flux_ip_adapter_scale: float = Field(default=0.75, validation_alias="FLUX_IP_ADAPTER_SCALE")
     flux_guidance_scale: float = Field(default=7.5, validation_alias="FLUX_GUIDANCE_SCALE")
     flux_num_inference_steps: int = Field(default=28, validation_alias="FLUX_NUM_INFERENCE_STEPS")

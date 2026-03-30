@@ -146,6 +146,25 @@ class RenderingService:
             )
         except RenderError as exc:
             logger.error("AI premium render failed: %s", exc)
+            if self._replicate:
+                try:
+                    fallback_result = await self._replicate.render_with_flux_inpaint(request)
+                    fallback_execution = RenderExecution(
+                        mode=RenderMode.AI_BASIC,
+                        result_url=fallback_result.image_url,
+                        result_bytes=fallback_result.image_bytes,
+                        confidence=fallback_result.confidence,
+                        processing_time_ms=fallback_result.processing_time_ms,
+                        cost_usd=fallback_result.cost_usd,
+                        model=fallback_result.model,
+                    )
+                    fallback_execution.warnings.append(
+                        f"Photorealistic render was unavailable, so we used the AI enhanced renderer instead: {exc}"
+                    )
+                    return fallback_execution
+                except RenderError as fallback_exc:
+                    logger.error("AI basic fallback render failed after premium failure: %s", fallback_exc)
+
             fallback = await self._render_overlay(
                 car_image=car_image,
                 product_image_url=product_image_url,
